@@ -1,5 +1,7 @@
 package cache
 
+// Node represents a node in a queue.
+// The value of the node is supposed to be the item, and the item and the node should have cyclic relationship.
 type Node[T any] struct {
 	next  *Node[T]
 	prev  *Node[T]
@@ -10,6 +12,8 @@ func newNode[T any](value T) *Node[T] {
 	return &Node[T]{value: value}
 }
 
+// queue is a data structure used to keep track of the least and most used items,
+// along with how often they are promoted.
 type queue[T any] struct {
 	head *Node[T]
 	tail *Node[T]
@@ -47,7 +51,6 @@ func (q *queue[T]) remove(node *Node[T]) {
 		q.tail = node.prev
 	}
 
-	// make sure they're gc'd
 	node.next = nil
 	node.prev = nil
 }
