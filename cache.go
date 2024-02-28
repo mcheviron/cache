@@ -97,8 +97,8 @@ func (c *Cache[T]) Extend(key string, duration time.Duration) bool {
 }
 
 func (c *Cache[T]) Clear() {
-	for _, b := range c.shards {
-		b.clear()
+	for _, s := range c.shards {
+		s.clear()
 	}
 }
 

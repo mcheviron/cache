@@ -10,38 +10,38 @@ type shard[T any] struct {
 	store map[string]*Item[T]
 }
 
-func (b *shard[T]) itemCount() int {
-	b.RLock()
-	defer b.RUnlock()
-	return len(b.store)
+func (s *shard[T]) itemCount() int {
+	s.RLock()
+	defer s.RUnlock()
+	return len(s.store)
 }
 
-func (b *shard[T]) get(key string) *Item[T] {
-	b.RLock()
-	defer b.RUnlock()
-	return b.store[key]
+func (s *shard[T]) get(key string) *Item[T] {
+	s.RLock()
+	defer s.RUnlock()
+	return s.store[key]
 }
 
-func (b *shard[T]) set(key string, value T, duration time.Duration) (*Item[T], *Item[T]) {
+func (s *shard[T]) set(key string, value T, duration time.Duration) (*Item[T], *Item[T]) {
 	expires := time.Now().Add(duration).UnixNano()
 	item := newItem(key, value, expires)
-	b.Lock()
-	existing := b.store[key]
-	b.store[key] = item
-	b.Unlock()
+	s.Lock()
+	existing := s.store[key]
+	s.store[key] = item
+	s.Unlock()
 	return item, existing
 }
 
-func (b *shard[T]) delete(key string) *Item[T] {
-	b.Lock()
-	item := b.store[key]
-	delete(b.store, key)
-	b.Unlock()
+func (s *shard[T]) delete(key string) *Item[T] {
+	s.Lock()
+	item := s.store[key]
+	delete(s.store, key)
+	s.Unlock()
 	return item
 }
 
-func (b *shard[T]) clear() {
-	b.Lock()
-	b.store = make(map[string]*Item[T])
-	b.Unlock()
+func (s *shard[T]) clear() {
+	s.Lock()
+	s.store = make(map[string]*Item[T])
+	s.Unlock()
 }
