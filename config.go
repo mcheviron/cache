@@ -9,7 +9,7 @@ type Config struct {
 	getsPerPromote int
 	byBytes        bool
 	byCount        bool
-	freeListSize   float32
+	freeListSize   int
 }
 
 func NewConfig() *Config {
@@ -21,7 +21,7 @@ func NewConfig() *Config {
 		itemsToPrune:  500,
 		deleteBuffer:  1024,
 		promoteBuffer: 1024,
-		freeListSize:  0.1,
+		freeListSize:  10,
 	}
 }
 
@@ -83,8 +83,12 @@ func (c *Config) PromoteBuffer(size int) *Config {
 	return c
 }
 
-func (c *Config) FreeListSize(size float32) *Config {
-	if size < 0 || size > 1 {
+// FreeListSize sets the size of the free list as a percentage of the actual size, the max size.
+// The size parameter should be a value between 0 and 100, representing the percentage.
+// If the size is less than 0 or greater than 100, the method does nothing and returns the current configuration.
+// Returns the updated Config object.
+func (c *Config) FreeListSize(size int) *Config {
+	if size < 0 || size > 100 {
 		return c
 	}
 	c.freeListSize = size

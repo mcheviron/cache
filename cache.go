@@ -24,7 +24,7 @@ func New[T any](config *Config) *Cache[T] {
 		shards:      make([]*shard[T], config.shards),
 		deletables:  make(chan *Item[T], config.deleteBuffer),
 		promotables: make(chan *Item[T], config.promoteBuffer),
-		freeList:    newFreeList[T](int(config.freeListSize * float32(config.maxSize))),
+		freeList:    newFreeList[T](config.maxSize / config.freeListSize),
 	}
 	for i := range c.shards {
 		c.shards[i] = &shard[T]{
