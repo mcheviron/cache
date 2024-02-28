@@ -1,36 +1,38 @@
 package cache
 
 type Config struct {
-	buckets        int
+	shards         int
 	maxSize        int
-	byBytes        bool
-	byCount        bool
 	itemsToPrune   int
 	deleteBuffer   int
 	promoteBuffer  int
 	getsPerPromote int
+	byBytes        bool
+	byCount        bool
+	freeListSize   float32
 }
 
 func NewConfig() *Config {
 	return &Config{
-		buckets:       16,
+		shards:        16,
 		maxSize:       5000,
 		byBytes:       true,
 		byCount:       false,
 		itemsToPrune:  500,
 		deleteBuffer:  1024,
 		promoteBuffer: 1024,
+		freeListSize:  0.1,
 	}
 }
 
-// Buckets sets the number of buckets in the configuration.
-// It takes an integer count as a parameter and updates the configuration's bucket count.
+// Shards sets the number of shards in the configuration.
+// It takes an integer count as a parameter and updates the configuration's shard count.
 // If the count is not a power of 2, the configuration remains unchanged.
-func (c *Config) Buckets(count int) *Config {
+func (c *Config) Shards(count int) *Config {
 	if count == 0 || count&(count-1) != 0 {
 		return c
 	}
-	c.buckets = count
+	c.shards = count
 	return c
 }
 
@@ -78,5 +80,13 @@ func (c *Config) DeleteBuffer(size int) *Config {
 
 func (c *Config) PromoteBuffer(size int) *Config {
 	c.promoteBuffer = size
+	return c
+}
+
+func (c *Config) FreeListSize(size float32) *Config {
+	if size < 0 || size > 1 {
+		return c
+	}
+	c.freeListSize = size
 	return c
 }
