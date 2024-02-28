@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-type freeList[T any] []*Item[T]
 type Cache[T any] struct {
 	*Config
 	queue       *queue[*Item[T]]
@@ -17,15 +16,6 @@ type Cache[T any] struct {
 	freeList    freeList[T]
 }
 
-func (f *freeList[T]) get() *Item[T] {
-	if len(*f) == 0 {
-		return nil
-	}
-	i := (*f)[len(*f)-1]
-	*f = (*f)[:len(*f)-1]
-	return i
-}
-
 func New[T any](config *Config) *Cache[T] {
 	c := &Cache[T]{
 		queue:       newQueue[*Item[T]](),
@@ -34,7 +24,7 @@ func New[T any](config *Config) *Cache[T] {
 		shards:      make([]*shard[T], config.shards),
 		deletables:  make(chan *Item[T], config.deleteBuffer),
 		promotables: make(chan *Item[T], config.promoteBuffer),
-		freeList:    make([]*Item[T], 0, int(config.freeListSize*float32(config.maxSize))),
+		freeList:    newFreeList[T](int(config.freeListSize * float32(config.maxSize))),
 	}
 	for i := range c.shards {
 		c.shards[i] = &shard[T]{
@@ -69,7 +59,7 @@ func (c *Cache[T]) Get(key string) *Item[T] {
 
 func (c *Cache[T]) Set(key string, value T, duration time.Duration) {
 	var newItem *Item[T]
-	if len(c.freeList) > 0 {
+	if c.freeList.len() > 0 {
 		newItem = c.freeList.get()
 		newItem.reset(key, value, time.Now().Add(duration).UnixNano())
 	} else {
@@ -132,8 +122,8 @@ func (c *Cache[T]) doPromote(item *Item[T]) bool {
 
 func (c *Cache[T]) doDelete(item *Item[T]) {
 	if item.node != nil {
-		if len(c.freeList) < cap(c.freeList) {
-			c.freeList = append(c.freeList, item)
+		if c.freeList.len() < c.freeList.cap() {
+			c.freeList.put(item)
 		} else {
 			c.queue.remove(item.node)
 			item.node = nil
@@ -183,8 +173,8 @@ func (c *Cache[T]) gc() {
 
 		prev := node.prev
 		item := node.value
-		if len(c.freeList) < cap(c.freeList) {
-			c.freeList = append(c.freeList, item)
+		if c.freeList.len() < c.freeList.cap() {
+			c.freeList.put(item)
 			c.getShard(item.key).delete(item.key)
 			c.size -= item.size
 		} else {
