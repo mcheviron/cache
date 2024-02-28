@@ -5,24 +5,24 @@ import (
 	"time"
 )
 
-type Bucket[T any] struct {
+type bucket[T any] struct {
 	sync.RWMutex
 	store map[string]*Item[T]
 }
 
-func (b *Bucket[T]) itemCount() int {
+func (b *bucket[T]) itemCount() int {
 	b.RLock()
 	defer b.RUnlock()
 	return len(b.store)
 }
 
-func (b *Bucket[T]) get(key string) *Item[T] {
+func (b *bucket[T]) get(key string) *Item[T] {
 	b.RLock()
 	defer b.RUnlock()
 	return b.store[key]
 }
 
-func (b *Bucket[T]) set(key string, value T, duration time.Duration) (*Item[T], *Item[T]) {
+func (b *bucket[T]) set(key string, value T, duration time.Duration) (*Item[T], *Item[T]) {
 	expires := time.Now().Add(duration).UnixNano()
 	item := newItem(key, value, expires)
 	b.Lock()
@@ -32,7 +32,7 @@ func (b *Bucket[T]) set(key string, value T, duration time.Duration) (*Item[T], 
 	return item, existing
 }
 
-func (b *Bucket[T]) delete(key string) *Item[T] {
+func (b *bucket[T]) delete(key string) *Item[T] {
 	b.Lock()
 	item := b.store[key]
 	delete(b.store, key)
@@ -40,7 +40,7 @@ func (b *Bucket[T]) delete(key string) *Item[T] {
 	return item
 }
 
-func (b *Bucket[T]) clear() {
+func (b *bucket[T]) clear() {
 	b.Lock()
 	b.store = make(map[string]*Item[T])
 	b.Unlock()
