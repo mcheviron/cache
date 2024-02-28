@@ -20,7 +20,7 @@ func newItem[T any](key string, value T, expires int64) *Item[T] {
 		key:     key,
 		value:   value,
 		expires: expires,
-		size:    int(reflect.TypeOf(value).Size()), // add this in the cache to not compute it every time
+		size:    int(reflect.TypeOf(value).Size()),
 	}
 }
 
