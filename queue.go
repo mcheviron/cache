@@ -15,16 +15,21 @@ type queue[T any] struct {
 	tail *Node[T]
 }
 
-func (q *queue[T]) pushToFront(value T) {
+func newQueue[T any]() *queue[T] {
+	return &queue[T]{}
+}
+
+func (q *queue[T]) pushToFront(value T) *Node[T] {
 	n := newNode(value)
 	if q.head == nil {
 		q.head = n
 		q.tail = n
-		return
+		return n
 	}
 	n.next = q.head
 	q.head.prev = n
 	q.head = n
+	return n
 }
 
 func (q *queue[T]) remove(node *Node[T]) {
