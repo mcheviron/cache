@@ -50,3 +50,10 @@ func (i *Item[T]) shouldPromote(getsPerPromote int32) bool {
 	i.promotions++
 	return i.promotions == getsPerPromote
 }
+
+func (i *Item[T]) reset(key string, value T, expires int64) {
+	i.promotions = 0
+	i.key = key
+	i.value = value
+	i.expires = expires
+}
