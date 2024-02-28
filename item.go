@@ -37,7 +37,7 @@ func (i *Item[T]) Extend(duration time.Duration) {
 }
 
 func (i *Item[T]) Expired() bool {
-	expires := atomic.LoadInt64(&i.expires)
+	expires := atomic.LoadInt64(&i.expires) // this field is acccessed concurrently
 	return expires < time.Now().UnixNano()
 }
 
