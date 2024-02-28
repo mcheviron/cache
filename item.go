@@ -11,7 +11,7 @@ type Item[T any] struct {
 	key        string
 	node       *Node[*Item[T]]
 	expires    int64
-	size       uintptr
+	size       int
 	promotions int32
 }
 
@@ -20,7 +20,7 @@ func newItem[T any](key string, value T, expires int64) *Item[T] {
 		key:     key,
 		value:   value,
 		expires: expires,
-		size:    reflect.TypeOf(value).Size(), // add this in the cache to not compute it every time
+		size:    int(reflect.TypeOf(value).Size()), // add this in the cache to not compute it every time
 	}
 }
 
