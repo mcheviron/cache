@@ -1,13 +1,14 @@
 package cache
 
 type Config struct {
-	buckets       int
-	maxSize       int64
-	byBytes       bool
-	byCount       bool
-	itemsToPrune  int
-	deleteBuffer  int
-	promoteBuffer int
+	buckets        int
+	maxSize        int
+	byBytes        bool
+	byCount        bool
+	itemsToPrune   int
+	deleteBuffer   int
+	promoteBuffer  int
+	getsPerPromote int
 }
 
 func NewConfig() *Config {
@@ -35,7 +36,7 @@ func (c *Config) Buckets(count int) *Config {
 
 // MaxSize sets the maximum size for the cache.
 // It takes an integer value representing the maximum size in bytes (or count).
-func (c *Config) MaxSize(size int64) *Config {
+func (c *Config) MaxSize(size int) *Config {
 	c.maxSize = size
 	return c
 }
