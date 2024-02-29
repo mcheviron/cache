@@ -2,6 +2,7 @@ package cache
 
 import (
 	"hash/fnv"
+	"strings"
 	"time"
 )
 
@@ -100,6 +101,37 @@ func (c *Cache[T]) Clear() {
 	for _, s := range c.shards {
 		s.clear()
 	}
+}
+
+func (c *Cache[T]) Range(fn func(key string, value T) bool) {
+	for _, shard := range c.shards {
+		if !shard.forEach(fn) {
+			return
+		}
+	}
+}
+
+func (s *shard[T]) forEach(fn func(key string, value T) bool) bool {
+	for _, item := range s.store {
+		if !fn(item.key, item.value) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *Cache[T]) Filter(pattern string) []*Item[T] {
+	var result []*Item[T]
+	c.Range(func(key string, value T) bool {
+		if strings.Contains(key, pattern) {
+			item := c.Get(key)
+			if item != nil {
+				result = append(result, item)
+			}
+		}
+		return true
+	})
+	return result
 }
 
 func (c *Cache[T]) doPromote(item *Item[T]) bool {
