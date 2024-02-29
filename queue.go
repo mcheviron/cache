@@ -1,29 +1,29 @@
 package cache
 
-// Node represents a node in a queue.
+// node represents a node in a queue.
 // The value of the node is supposed to be the item, and the item and the node should have cyclic relationship.
-type Node[T any] struct {
-	next  *Node[T]
-	prev  *Node[T]
+type node[T any] struct {
+	next  *node[T]
+	prev  *node[T]
 	value T
 }
 
-func newNode[T any](value T) *Node[T] {
-	return &Node[T]{value: value}
+func newNode[T any](value T) *node[T] {
+	return &node[T]{value: value}
 }
 
 // queue is a data structure used to keep track of the least and most used items,
 // along with how often they are promoted.
 type queue[T any] struct {
-	head *Node[T]
-	tail *Node[T]
+	head *node[T]
+	tail *node[T]
 }
 
 func newQueue[T any]() *queue[T] {
 	return &queue[T]{}
 }
 
-func (q *queue[T]) pushToFront(value T) *Node[T] {
+func (q *queue[T]) pushToFront(value T) *node[T] {
 	n := newNode(value)
 	if q.head == nil {
 		q.head = n
@@ -36,7 +36,7 @@ func (q *queue[T]) pushToFront(value T) *Node[T] {
 	return n
 }
 
-func (q *queue[T]) remove(node *Node[T]) {
+func (q *queue[T]) remove(node *node[T]) {
 	if node == nil {
 		return
 	}
@@ -55,7 +55,7 @@ func (q *queue[T]) remove(node *Node[T]) {
 	node.prev = nil
 }
 
-func (q *queue[T]) moveToFront(node *Node[T]) {
+func (q *queue[T]) moveToFront(node *node[T]) {
 	if node == nil || q.head == node {
 		return
 	}

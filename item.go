@@ -9,7 +9,7 @@ import (
 type Item[T any] struct {
 	value      T
 	key        string
-	node       *Node[*Item[T]]
+	node       *node[*Item[T]]
 	expires    int64
 	size       int
 	promotions int32
