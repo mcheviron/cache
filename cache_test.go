@@ -1,6 +1,7 @@
 package cache_test
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -164,5 +165,73 @@ func TestCacheClear(t *testing.T) {
 
 	if count != 0 {
 		t.Errorf("Expected item count to be 0 after clearing cache, got %d", count)
+	}
+}
+func TestForEach(t *testing.T) {
+	cache := cache.New[string](cache.NewConfig())
+
+	cache.Set("key1", "value1", time.Second)
+	cache.Set("key2", "value2", time.Second)
+	cache.Set("key3", "value3", time.Second)
+
+	keys := make([]string, 0)
+	values := make([]string, 0)
+
+	fn := func(key string, value string) bool {
+		keys = append(keys, key)
+		values = append(values, value)
+		return true
+	}
+
+	cache.Range(fn)
+
+	expectedKeys := []string{"key1", "key2", "key3"}
+	expectedValues := []string{"value1", "value2", "value3"}
+
+	if !reflect.DeepEqual(keys, expectedKeys) {
+		t.Errorf("Expected keys to be %v, got %v", expectedKeys, keys)
+	}
+
+	if !reflect.DeepEqual(values, expectedValues) {
+		t.Errorf("Expected values to be %v, got %v", expectedValues, values)
+	}
+}
+func TestCacheFilter(t *testing.T) {
+	cache := cache.New[string](cache.NewConfig())
+
+	cache.Set("key1", "value1", time.Second)
+	cache.Set("key2", "value2", time.Second)
+	cache.Set("key3", "value3", time.Second)
+
+	filtered := cache.Filter("key")
+
+	expectedKeys := []string{"key1", "key2", "key3"}
+	expectedValues := []string{"value1", "value2", "value3"}
+
+	if len(filtered) != len(expectedKeys) {
+		t.Errorf("Expected filtered items count to be %d, got %d", len(expectedKeys), len(filtered))
+	}
+
+	for i, item := range filtered {
+		if item.Key() != expectedKeys[i] {
+			t.Errorf("Expected filtered item key to be '%s', got '%s'", expectedKeys[i], item.Key())
+		}
+
+		if item.Value() != expectedValues[i] {
+			t.Errorf("Expected filtered item value to be '%s', got '%s'", expectedValues[i], item.Value())
+		}
+	}
+}
+func TestCacheFilterEmptyResult(t *testing.T) {
+	cache := cache.New[string](cache.NewConfig())
+
+	cache.Set("key1", "value1", time.Second)
+	cache.Set("key2", "value2", time.Second)
+	cache.Set("key3", "value3", time.Second)
+
+	filtered := cache.Filter("nonexistent")
+
+	if len(filtered) != 0 {
+		t.Errorf("Expected filtered items count to be 0, got %d", len(filtered))
 	}
 }
