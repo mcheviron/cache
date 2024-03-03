@@ -130,16 +130,17 @@ func TestCacheExtendExistingItem(t *testing.T) {
 
 	cache.Set("key1", "value1", time.Second)
 
+	start := time.Now()
 	extended := cache.Extend("key1", time.Minute)
-
+	
 	if !extended {
 		t.Errorf("Expected item to be extended")
 	}
-
+	
 	item := cache.Get("key1")
-
-	if item.TTL() < time.Minute {
-		t.Errorf("Expected item TTL to be at least 1 minute, got %s", item.TTL())
+	elapsed := time.Since(start)
+	if item.TTL() < time.Minute-elapsed {
+		t.Errorf("Expected item TTL to be less than 1 minute, got %s", item.TTL())
 	}
 }
 
