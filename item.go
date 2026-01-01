@@ -9,18 +9,17 @@ import (
 type Item[T any] struct {
 	value      T
 	key        string
-	node       *node[*Item[T]]
 	expires    int64
-	size       int
-	promotions int32
+	weight     int
+	lastAccess uint64
 }
 
-func newItem[T any](key string, value T, expires int64) *Item[T] {
+func newItem[T any](key string, value T, expires int64, weight int) *Item[T] {
 	return &Item[T]{
 		key:     key,
 		value:   value,
 		expires: expires,
-		size:    int(reflect.TypeOf(value).Size()),
+		weight:  weight,
 	}
 }
 
@@ -37,7 +36,7 @@ func (i *Item[T]) Extend(duration time.Duration) {
 }
 
 func (i *Item[T]) Expired() bool {
-	expires := atomic.LoadInt64(&i.expires) // this field is acccessed concurrently
+	expires := atomic.LoadInt64(&i.expires)
 	return expires < time.Now().UnixNano()
 }
 
@@ -46,14 +45,14 @@ func (i *Item[T]) TTL() time.Duration {
 	return time.Nanosecond * time.Duration(expires-time.Now().UnixNano())
 }
 
-func (i *Item[T]) shouldPromote(getsPerPromote int32) bool {
-	i.promotions++
-	return i.promotions == getsPerPromote
+func (i *Item[T]) touch(tick uint64) {
+	atomic.StoreUint64(&i.lastAccess, tick)
 }
 
-func (i *Item[T]) reset(key string, value T, expires int64) {
-	i.promotions = 0
-	i.key = key
-	i.value = value
-	i.expires = expires
+func (i *Item[T]) lastAccessTick() uint64 {
+	return atomic.LoadUint64(&i.lastAccess)
+}
+
+func defaultWeigh[T any](key string, value T) int {
+	return len(key) + int(reflect.TypeOf(value).Size())
 }

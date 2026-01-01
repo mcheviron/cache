@@ -2,37 +2,43 @@ package cache
 
 import (
 	"hash/fnv"
+	"math/rand/v2"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 type Cache[T any] struct {
-	*Config
-	queue       *queue[*Item[T]]
-	shards      []*shard[T]
-	size        int
-	shardMask   uint32
-	deletables  chan *Item[T]
-	promotables chan *Item[T]
-	freeList    freeList[T]
+	cfg       Config
+	shards    []*shard[T]
+	shardMask uint32
+
+	accessClock uint64
+	size        int64
+
+	weigher func(key string, value T) int
 }
 
-func New[T any](config *Config) *Cache[T] {
+func New[T any](config Config) *Cache[T] {
+	cfg := config.Build()
+
 	c := &Cache[T]{
-		queue:       newQueue[*Item[T]](),
-		Config:      config,
-		shardMask:   uint32(config.shards) - 1,
-		shards:      make([]*shard[T], config.shards),
-		deletables:  make(chan *Item[T], config.deleteBuffer),
-		promotables: make(chan *Item[T], config.promoteBuffer),
-		freeList:    newFreeList[T](config.maxSize / config.freeListSize),
+		cfg:       cfg,
+		shardMask: uint32(cfg.Shards) - 1,
+		shards:    make([]*shard[T], cfg.Shards),
 	}
 	for i := range c.shards {
-		c.shards[i] = &shard[T]{
-			store: make(map[string]*Item[T]),
-		}
+		c.shards[i] = newShard[T]()
 	}
-	go c.worker()
+
+	if cfg.Weigher != nil {
+		c.weigher = func(key string, value T) int {
+			return cfg.Weigher(key, any(value))
+		}
+	} else {
+		c.weigher = defaultWeigh[T]
+	}
+
 	return c
 }
 
@@ -49,47 +55,50 @@ func (c *Cache[T]) Get(key string) *Item[T] {
 	if item == nil {
 		return nil
 	}
+
 	if !item.Expired() {
-		select {
-		case c.promotables <- item:
-		default:
-		}
+		item.touch(c.nextTick())
 	}
+
 	return item
 }
 
+func (c *Cache[T]) Peek(key string) *Item[T] {
+	return c.getShard(key).get(key)
+}
+
 func (c *Cache[T]) Set(key string, value T, duration time.Duration) {
-	var newItem *Item[T]
-	if c.freeList.len() > 0 {
-		newItem = c.freeList.get()
-		newItem.reset(key, value, time.Now().Add(duration).UnixNano())
-	} else {
-		new, old := c.getShard(key).set(key, value, duration)
-		if old != nil {
-			c.deletables <- old
-		}
-		newItem = new
+	expires := time.Now().Add(duration).UnixNano()
+	weight := c.weigher(key, value)
+	item := newItem(key, value, expires, weight)
+	item.touch(c.nextTick())
+
+	old := c.getShard(key).set(key, item)
+	if old != nil {
+		atomic.AddInt64(&c.size, -int64(old.weight))
 	}
-	c.promotables <- newItem
+	atomic.AddInt64(&c.size, int64(item.weight))
+
+	c.evictIfNeeded()
 }
 
 func (c *Cache[T]) Delete(key string) {
 	if item := c.getShard(key).delete(key); item != nil {
-		c.deletables <- item
+		atomic.AddInt64(&c.size, -int64(item.weight))
 	}
 }
 
 func (c *Cache[T]) Replace(key string, value T) bool {
-	item := c.getShard(key).get(key)
+	item := c.Peek(key)
 	if item == nil {
 		return false
 	}
-	c.getShard(key).set(key, value, item.TTL())
+	c.Set(key, value, item.TTL())
 	return true
 }
 
 func (c *Cache[T]) Extend(key string, duration time.Duration) bool {
-	item := c.getShard(key).get(key)
+	item := c.Peek(key)
 	if item == nil {
 		return false
 	}
@@ -101,6 +110,7 @@ func (c *Cache[T]) Clear() {
 	for _, s := range c.shards {
 		s.clear()
 	}
+	atomic.StoreInt64(&c.size, 0)
 }
 
 func (c *Cache[T]) Range(fn func(key string, value T) bool) {
@@ -109,15 +119,6 @@ func (c *Cache[T]) Range(fn func(key string, value T) bool) {
 			return
 		}
 	}
-}
-
-func (s *shard[T]) forEach(fn func(key string, value T) bool) bool {
-	for _, item := range s.store {
-		if !fn(item.key, item.value) {
-			return false
-		}
-	}
-	return true
 }
 
 func (c *Cache[T]) Filter(pattern string) []*Item[T] {
@@ -134,88 +135,68 @@ func (c *Cache[T]) Filter(pattern string) []*Item[T] {
 	return result
 }
 
-func (c *Cache[T]) doPromote(item *Item[T]) bool {
-	if item.promotions < 0 {
-		return false
-	}
-
-	if item.node != nil {
-		if item.shouldPromote(int32(c.getsPerPromote)) {
-			c.queue.moveToFront(item.node)
-			item.promotions = 0
-		}
-		return false
-	}
-
-	c.size += item.size
-	item.node = c.queue.pushToFront(item)
-	return true
-}
-
-func (c *Cache[T]) doDelete(item *Item[T]) {
-	if item.node != nil {
-		if c.freeList.len() < c.freeList.cap() {
-			c.freeList.put(item)
-		} else {
-			c.queue.remove(item.node)
-			item.node = nil
-			item.promotions = -1
-		}
-
-		c.size -= item.size
-	} else {
-		item.promotions = -1
-	}
-}
-
 func (c *Cache[T]) getShard(key string) *shard[T] {
 	h := fnv.New32a()
-	h.Write([]byte(key))
+	_, _ = h.Write([]byte(key))
 	return c.shards[h.Sum32()&c.shardMask]
 }
 
-func (c *Cache[T]) worker() {
-	promoteItem := func(item *Item[T]) {
-		if c.doPromote(item) && c.size > c.maxSize {
-			c.gc()
+func (c *Cache[T]) evictIfNeeded() {
+	for evicted := 0; evicted < c.cfg.ItemsToPrune; evicted++ {
+		if int(atomic.LoadInt64(&c.size)) <= c.cfg.MaxSize {
+			return
 		}
-	}
 
-	for {
-		select {
-		case item := <-c.deletables:
-			c.doDelete(item)
-		case item := <-c.promotables:
-			promoteItem(item)
+		candidate := c.pickEvictionCandidate()
+		if candidate == nil {
+			return
+		}
+
+		if c.getShard(candidate.key).deleteIfSame(candidate.key, candidate) {
+			atomic.AddInt64(&c.size, -int64(candidate.weight))
 		}
 	}
 }
 
-func (c *Cache[T]) gc() {
-	node := c.queue.tail
-	itemsToPrune := c.itemsToPrune
+func (c *Cache[T]) pickEvictionCandidate() *Item[T] {
+	var best *Item[T]
+	bestTick := uint64(^uint64(0))
 
-	if min := c.size - c.maxSize; min > itemsToPrune {
-		itemsToPrune = min
-	}
-	for range itemsToPrune {
-		if node == nil {
-			break
+	for i := 0; i < c.cfg.SampleSize; i++ {
+		shard := c.shards[rand.IntN(len(c.shards))]
+		item := shard.sampleNth(rand.Uint64())
+		if item == nil {
+			continue
 		}
 
-		prev := node.prev
-		item := node.value
-		if c.freeList.len() < c.freeList.cap() {
-			c.freeList.put(item)
-			c.getShard(item.key).delete(item.key)
-			c.size -= item.size
-		} else {
-			c.getShard(item.key).delete(item.key)
-			c.size -= item.size
-			c.queue.remove(node)
-			item.node = nil
-			item.promotions = -1
+		tick := item.lastAccessTick()
+		if best == nil || tick < bestTick {
+			best = item
+			bestTick = tick
 		}
-		node = prev
 	}
+
+	if best != nil {
+		return best
+	}
+
+	var oldest *Item[T]
+	oldestTick := uint64(^uint64(0))
+	c.Range(func(_ string, _ T) bool { return true })
+	for _, shard := range c.shards {
+		shard.RLock()
+		for _, item := range shard.store {
+			tick := item.lastAccessTick()
+			if oldest == nil || tick < oldestTick {
+				oldest = item
+				oldestTick = tick
+			}
+		}
+		shard.RUnlock()
+	}
+	return oldest
+}
+
+func (c *Cache[T]) nextTick() uint64 {
+	return atomic.AddUint64(&c.accessClock, 1)
 }
