@@ -91,8 +91,8 @@ func TestCacheGetExpiredItem(t *testing.T) {
 
 	item := cache.Get("key1")
 
-	if item == nil || item.Expired() == false {
-		t.Errorf("Expected item to be expired")
+	if item != nil {
+		t.Errorf("Expected expired item to be treated as miss")
 	}
 }
 func TestCacheDelete(t *testing.T) {
@@ -193,6 +193,41 @@ func TestCacheExtendNonExistingItem(t *testing.T) {
 		t.Errorf("Expected item to not be extended")
 	}
 }
+func TestCacheEvictsLhdWhenOverWeight(t *testing.T) {
+	cfg := cache.NewConfig()
+	cfg.Shards = 2
+	cfg.MaxWeight = 20
+	cfg.ItemsToPrune = 10
+	cfg.SampleSize = 1024
+	cfg.EvictionPolicy = cache.SampledLhd
+	cfg.Weigher = func(key string, value any) int {
+		return 10
+	}
+
+	c := cache.New[int](cfg)
+
+	c.Set("k1", 1, time.Minute)
+	c.Set("k2", 2, time.Minute)
+
+	for i := 0; i < 10; i++ {
+		if c.Get("k1") == nil {
+			t.Fatalf("expected k1")
+		}
+	}
+
+	c.Set("k3", 3, time.Minute)
+
+	if c.Peek("k2") != nil {
+		t.Fatalf("expected k2 to be evicted")
+	}
+	if c.Peek("k1") == nil {
+		t.Fatalf("expected k1 to remain")
+	}
+	if c.Peek("k3") == nil {
+		t.Fatalf("expected k3 to remain")
+	}
+}
+
 func TestCacheClear(t *testing.T) {
 	cache := cache.New[string](cache.NewConfig())
 

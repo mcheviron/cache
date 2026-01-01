@@ -14,11 +14,13 @@ import (
 // Get/Peek remains a valid pointer (Go GC keeps it alive). It may represent a
 // value no longer reachable from the cache.
 type Item[T any] struct {
-	value      T
-	key        string
-	expires    int64
-	weight     int
-	lastAccess uint64
+	value       T
+	key         string
+	expires     int64
+	weight      int
+	createdTick uint64
+	hits        uint64
+	lastAccess  uint64
 }
 
 func newItem[T any](key string, value T, expires int64, weight int) *Item[T] {
@@ -57,6 +59,23 @@ func (i *Item[T]) Expired() bool {
 func (i *Item[T]) TTL() time.Duration {
 	expires := atomic.LoadInt64(&i.expires)
 	return time.Nanosecond * time.Duration(expires-time.Now().UnixNano())
+}
+
+func (i *Item[T]) setCreatedTick(tick uint64) {
+	atomic.StoreUint64(&i.createdTick, tick)
+}
+
+func (i *Item[T]) createdTickValue() uint64 {
+	return atomic.LoadUint64(&i.createdTick)
+}
+
+func (i *Item[T]) hitsValue() uint64 {
+	return atomic.LoadUint64(&i.hits)
+}
+
+func (i *Item[T]) recordHit(tick uint64) {
+	atomic.AddUint64(&i.hits, 1)
+	i.touch(tick)
 }
 
 func (i *Item[T]) touch(tick uint64) {

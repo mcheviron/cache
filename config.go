@@ -40,13 +40,39 @@ type Config struct {
 	// Larger values improve eviction quality but increase eviction cost.
 	SampleSize int
 
+	// EvictionPolicy controls which eviction strategy is used when over capacity.
+	//
+	// The default (zero value) is SampledLru.
+	EvictionPolicy EvictionPolicy
+
 	// Weigher is an optional custom weight function.
 	//
 	// If nil, the cache uses `len(key) + reflect.TypeOf(value).Size()`.
 	Weigher Weigher
+
+	// ExpirationPolicy controls how get/peek treats expired entries.
+	//
+	// The default (zero value) is TreatExpiredAsMiss.
+	ExpirationPolicy ExpirationPolicy
 }
 
+type EvictionPolicy uint8
+
+const (
+	SampledLru EvictionPolicy = iota
+	SampledLhd
+)
+
 // NewConfig returns a default configuration.
+type ExpirationPolicy uint8
+
+const (
+	// TreatExpiredAsMiss returns nil for expired items.
+	TreatExpiredAsMiss ExpirationPolicy = iota
+	// ReturnExpired allows Get/Peek to return expired items.
+	ReturnExpired
+)
+
 func NewConfig() Config {
 	return Config{
 		Shards:       16,
@@ -73,6 +99,12 @@ func (c Config) Build() Config {
 	}
 	if out.SampleSize <= 0 {
 		out.SampleSize = 32
+	}
+	if out.EvictionPolicy != SampledLru && out.EvictionPolicy != SampledLhd {
+		out.EvictionPolicy = SampledLru
+	}
+	if out.ExpirationPolicy != TreatExpiredAsMiss && out.ExpirationPolicy != ReturnExpired {
+		out.ExpirationPolicy = TreatExpiredAsMiss
 	}
 	return out
 }
