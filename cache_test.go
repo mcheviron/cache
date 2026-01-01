@@ -193,6 +193,36 @@ func TestCacheExtendNonExistingItem(t *testing.T) {
 		t.Errorf("Expected item to not be extended")
 	}
 }
+func TestCacheEvictsLruWhenOverWeight(t *testing.T) {
+	cfg := cache.NewConfig()
+	cfg.Shards = 2
+	cfg.MaxWeight = 30
+	cfg.ItemsToPrune = 10
+	cfg.SampleSize = 1024
+	cfg.EvictionPolicy = cache.SampledLru
+	cfg.Weigher = func(key string, value any) int {
+		return 10
+	}
+
+	c := cache.New[int](cfg)
+
+	c.Set("k1", 1, time.Minute)
+	c.Set("k2", 2, time.Minute)
+	c.Set("k3", 3, time.Minute)
+
+	// Touch k2 so k1 becomes LRU.
+	if c.Get("k2") == nil {
+		t.Fatalf("expected k2")
+	}
+
+	// Insert enough to force eviction.
+	c.Set("k4", 4, time.Minute)
+
+	if c.Peek("k1") != nil {
+		t.Fatalf("expected k1 to be evicted")
+	}
+}
+
 func TestCacheEvictsLhdWhenOverWeight(t *testing.T) {
 	cfg := cache.NewConfig()
 	cfg.Shards = 2

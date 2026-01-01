@@ -13,7 +13,7 @@ package cache
 //
 // Note: the value is passed as `any` so callers can type-assert.
 // Example: `v, _ := value.(MyType)`.
-type Weigher func(key string, value any) int
+type Weigher[V any] func(key string, value V) int
 
 // Config controls cache behavior.
 //
@@ -48,7 +48,7 @@ type Config struct {
 	// Weigher is an optional custom weight function.
 	//
 	// If nil, the cache uses `len(key) + reflect.TypeOf(value).Size()`.
-	Weigher Weigher
+	Weigher Weigher[any]
 
 	// ExpirationPolicy controls how get/peek treats expired entries.
 	//

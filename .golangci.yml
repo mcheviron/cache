@@ -1,0 +1,31 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: false
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - errcheck
+    - funlen
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - modernize
+    - staticcheck
+    - unused
+    - lll
+
+  settings:
+    funlen:
+      lines: 60
+      statements: -1
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen

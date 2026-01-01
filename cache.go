@@ -48,10 +48,16 @@ type Cache[T any] struct {
 func New[T any](config Config) *Cache[T] {
 	cfg := config.Build()
 
+	shards := cfg.Shards
+	if shards < 1 || shards > int(^uint32(0)) {
+		shards = 16
+	}
+
 	c := &Cache[T]{
-		cfg:       cfg,
-		shardMask: uint32(cfg.Shards) - 1,
-		shards:    make([]*shard[T], cfg.Shards),
+		cfg: cfg,
+		//nolint:gosec // shards is bounded to uint32; mask fits.
+		shardMask: uint32(shards - 1),
+		shards:    make([]*shard[T], shards),
 	}
 	for i := range c.shards {
 		c.shards[i] = newShard[T]()
@@ -263,7 +269,9 @@ func (c *Cache[T]) pickSampledLru() *Item[T] {
 	bestTick := uint64(^uint64(0))
 
 	for i := 0; i < c.cfg.SampleSize; i++ {
+		//nolint:gosec // non-crypto randomness is fine for eviction sampling
 		shard := c.shards[rand.IntN(len(c.shards))]
+		//nolint:gosec // non-crypto randomness is fine for eviction sampling
 		item := shard.sampleNth(rand.Uint64())
 		if item == nil {
 			continue
@@ -288,7 +296,9 @@ func (c *Cache[T]) pickSampledLhd() *Item[T] {
 	var best *Item[T]
 
 	for i := 0; i < c.cfg.SampleSize; i++ {
+		//nolint:gosec // non-crypto randomness is fine for eviction sampling
 		shard := c.shards[rand.IntN(len(c.shards))]
+		//nolint:gosec // non-crypto randomness is fine for eviction sampling
 		item := shard.sampleNth(rand.Uint64())
 		if item == nil {
 			continue
@@ -364,20 +374,21 @@ func (c *Cache[T]) lhdIsBetterCandidate(candidate, current *Item[T], nowTick uin
 
 func (c *Cache[T]) lhdStats(item *Item[T], nowTick uint64) (hits uint64, denom uint64) {
 	created := item.createdTickValue()
-	age := nowTick - created
-	if age < 1 {
-		age = 1
+	age := uint64(0)
+	if nowTick > created {
+		age = nowTick - created
 	}
+	age = max(age, 1)
 
-	weight := uint64(item.weight)
-	if weight < 1 {
-		weight = 1
+	weight := uint64(0)
+	if item.weight > 0 {
+		//nolint:gosec // weight is validated to be positive before conversion
+		weight = uint64(item.weight)
 	}
+	weight = max(weight, 1)
 
 	d := age * weight
-	if d < 1 {
-		d = 1
-	}
+	d = max(d, 1)
 
 	return item.hitsValue(), d
 }
