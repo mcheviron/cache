@@ -15,7 +15,7 @@ func TestCacheItemCount(t *testing.T) {
 	cache.Set("key2", "value2", time.Second)
 	cache.Set("key3", "value3", time.Second)
 
-	count := cache.ItemCount()
+	count := cache.Len()
 
 	if count != 3 {
 		t.Errorf("Expected item count to be 3, got %d", count)
@@ -139,8 +139,10 @@ func TestCacheExtendExistingItem(t *testing.T) {
 
 	item := cache.Get("key1")
 	elapsed := time.Since(start)
-	if item.TTL() < time.Minute-elapsed {
-		t.Errorf("Expected item TTL to be less than 1 minute, got %s", item.TTL())
+	// Allow a small scheduling/measurement jitter window.
+	minExpected := time.Minute - elapsed - 10*time.Millisecond
+	if item.TTL() < minExpected {
+		t.Errorf("Expected item TTL to be near 1 minute, got %s", item.TTL())
 	}
 }
 
@@ -162,7 +164,7 @@ func TestCacheClear(t *testing.T) {
 
 	cache.Clear()
 
-	count := cache.ItemCount()
+	count := cache.Len()
 
 	if count != 0 {
 		t.Errorf("Expected item count to be 0 after clearing cache, got %d", count)

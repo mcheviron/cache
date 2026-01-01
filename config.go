@@ -4,7 +4,7 @@ type Weigher func(key string, value any) int
 
 type Config struct {
 	Shards       int
-	MaxSize      int
+	MaxWeight    int
 	ItemsToPrune int
 	SampleSize   int
 	Weigher      Weigher
@@ -13,7 +13,7 @@ type Config struct {
 func NewConfig() Config {
 	return Config{
 		Shards:       16,
-		MaxSize:      5000,
+		MaxWeight:    5000,
 		ItemsToPrune: 500,
 		SampleSize:   32,
 	}
@@ -25,8 +25,8 @@ func (c Config) Build() Config {
 	if out.Shards == 0 || out.Shards&(out.Shards-1) != 0 {
 		out.Shards = 16
 	}
-	if out.MaxSize <= 0 {
-		out.MaxSize = 5000
+	if out.MaxWeight <= 0 {
+		out.MaxWeight = 5000
 	}
 	if out.ItemsToPrune <= 0 {
 		out.ItemsToPrune = 500

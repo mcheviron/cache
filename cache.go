@@ -50,6 +50,14 @@ func (c *Cache[T]) ItemCount() int {
 	return count
 }
 
+func (c *Cache[T]) Len() int {
+	return c.ItemCount()
+}
+
+func (c *Cache[T]) IsEmpty() bool {
+	return c.Len() == 0
+}
+
 func (c *Cache[T]) Get(key string) *Item[T] {
 	item := c.getShard(key).get(key)
 	if item == nil {
@@ -143,7 +151,7 @@ func (c *Cache[T]) getShard(key string) *shard[T] {
 
 func (c *Cache[T]) evictIfNeeded() {
 	for evicted := 0; evicted < c.cfg.ItemsToPrune; evicted++ {
-		if int(atomic.LoadInt64(&c.size)) <= c.cfg.MaxSize {
+		if int(atomic.LoadInt64(&c.size)) <= c.cfg.MaxWeight {
 			return
 		}
 
