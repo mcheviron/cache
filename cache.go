@@ -8,6 +8,27 @@ import (
 	"time"
 )
 
+// Cache is a sharded in-memory cache with TTL and size-based eviction.
+//
+// The cache stores items in shard maps for concurrent access. Each successful
+// Get updates an access tick on the item. When the total weight exceeds
+// Config.MaxWeight, eviction samples candidates across shards and evicts the
+// item with the oldest access tick.
+//
+// TTL note:
+//
+// Expiration is not enforced automatically. Get/Peek may return an expired item.
+// Consumers should check Item.Expired() if needed.
+//
+// Concurrency:
+//
+// Cache methods are safe for concurrent use.
+//
+// Returned pointers:
+//
+// Get/Peek return pointers to items owned by the cache. If the key is later
+// evicted/deleted, previously returned pointers remain valid but may point to
+// an item no longer reachable from the cache.
 type Cache[T any] struct {
 	cfg       Config
 	shards    []*shard[T]
@@ -19,6 +40,9 @@ type Cache[T any] struct {
 	weigher func(key string, value T) int
 }
 
+// New constructs a cache from the provided config.
+//
+// New calls config.Build() internally.
 func New[T any](config Config) *Cache[T] {
 	cfg := config.Build()
 
@@ -42,6 +66,7 @@ func New[T any](config Config) *Cache[T] {
 	return c
 }
 
+// ItemCount returns the number of keys currently stored.
 func (c *Cache[T]) ItemCount() int {
 	count := 0
 	for _, b := range c.shards {
@@ -50,14 +75,19 @@ func (c *Cache[T]) ItemCount() int {
 	return count
 }
 
+// Len is an alias for ItemCount.
 func (c *Cache[T]) Len() int {
 	return c.ItemCount()
 }
 
+// IsEmpty reports whether the cache is empty.
 func (c *Cache[T]) IsEmpty() bool {
 	return c.Len() == 0
 }
 
+// Get returns the item for key, touching access metadata.
+//
+// Returns nil if the key is not present.
 func (c *Cache[T]) Get(key string) *Item[T] {
 	item := c.getShard(key).get(key)
 	if item == nil {
@@ -71,10 +101,16 @@ func (c *Cache[T]) Get(key string) *Item[T] {
 	return item
 }
 
+// Peek returns the item for key without updating access metadata.
+//
+// This is useful for "check without affecting eviction".
 func (c *Cache[T]) Peek(key string) *Item[T] {
 	return c.getShard(key).get(key)
 }
 
+// Set inserts or updates a key with a TTL.
+//
+// If key existed, the previous item is replaced.
 func (c *Cache[T]) Set(key string, value T, duration time.Duration) {
 	expires := time.Now().Add(duration).UnixNano()
 	weight := c.weigher(key, value)
@@ -90,12 +126,16 @@ func (c *Cache[T]) Set(key string, value T, duration time.Duration) {
 	c.evictIfNeeded()
 }
 
+// Delete removes key if present.
 func (c *Cache[T]) Delete(key string) {
 	if item := c.getShard(key).delete(key); item != nil {
 		atomic.AddInt64(&c.size, -int64(item.weight))
 	}
 }
 
+// Replace updates the value of an existing key while preserving its TTL.
+//
+// Returns false if the key does not exist.
 func (c *Cache[T]) Replace(key string, value T) bool {
 	item := c.Peek(key)
 	if item == nil {
@@ -105,6 +145,9 @@ func (c *Cache[T]) Replace(key string, value T) bool {
 	return true
 }
 
+// Extend updates the expiration time of an existing key to now+duration.
+//
+// Returns false if the key does not exist.
 func (c *Cache[T]) Extend(key string, duration time.Duration) bool {
 	item := c.Peek(key)
 	if item == nil {
@@ -114,6 +157,7 @@ func (c *Cache[T]) Extend(key string, duration time.Duration) bool {
 	return true
 }
 
+// Clear removes all items.
 func (c *Cache[T]) Clear() {
 	for _, s := range c.shards {
 		s.clear()
@@ -121,6 +165,9 @@ func (c *Cache[T]) Clear() {
 	atomic.StoreInt64(&c.size, 0)
 }
 
+// Range calls fn for each key/value. If fn returns false, iteration stops.
+//
+// The callback runs under shard read locks; keep it quick.
 func (c *Cache[T]) Range(fn func(key string, value T) bool) {
 	for _, shard := range c.shards {
 		if !shard.forEach(fn) {
@@ -129,6 +176,9 @@ func (c *Cache[T]) Range(fn func(key string, value T) bool) {
 	}
 }
 
+// Filter returns all items whose key contains pattern.
+//
+// Filter touches access metadata for matched keys (because it calls Get).
 func (c *Cache[T]) Filter(pattern string) []*Item[T] {
 	var result []*Item[T]
 	c.Range(func(key string, value T) bool {
@@ -190,7 +240,6 @@ func (c *Cache[T]) pickEvictionCandidate() *Item[T] {
 
 	var oldest *Item[T]
 	oldestTick := uint64(^uint64(0))
-	c.Range(func(_ string, _ T) bool { return true })
 	for _, shard := range c.shards {
 		shard.RLock()
 		for _, item := range shard.store {
