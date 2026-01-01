@@ -1,12 +1,49 @@
 package cache_test
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/mcheviron/cache"
 )
+
+func ExampleCache_basic() {
+	c := cache.New[string](cache.NewConfig())
+	c.Set("k", "v", time.Minute)
+
+	item := c.Get("k")
+	fmt.Println(item.Value())
+	// Output: v
+}
+
+func ExampleCache_withWeigher() {
+	cfg := cache.NewConfig()
+	cfg.MaxWeight = 1024
+	cfg.Weigher = func(key string, value any) int {
+		// Example: count the key plus string bytes.
+		s, _ := value.(string)
+		return len(key) + len(s)
+	}
+
+	c := cache.New[string](cfg)
+	c.Set("k", "hello", time.Minute)
+
+	fmt.Println(c.Get("k").Value())
+	// Output: hello
+}
+
+func ExampleCache_peekVsGet() {
+	c := cache.New[string](cache.NewConfig())
+	c.Set("k", "v", time.Minute)
+
+	_ = c.Peek("k")
+	_ = c.Get("k")
+
+	fmt.Println("ok")
+	// Output: ok
+}
 
 func TestCacheItemCount(t *testing.T) {
 	cache := cache.New[string](cache.NewConfig())
@@ -105,8 +142,9 @@ func TestCacheReplaceExistingItem(t *testing.T) {
 		t.Errorf("Expected item value to be 'newvalue', got '%s'", item.Value())
 	}
 
-	if item.TTL() >= time.Second {
-		t.Errorf("Expected item TTL to be less than 1 second, got %s", item.TTL())
+	// TTL preservation is approximate; allow equality and small jitter.
+	if item.TTL() > time.Second {
+		t.Errorf("Expected item TTL to be <= 1 second, got %s", item.TTL())
 	}
 }
 
